@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -75,6 +76,26 @@ func (a *App) GetWallpapers() []WallpaperInfo {
 	return a.data.Wallpapers
 }
 
+// GetWallpaperAsBase64 returns wallpaper as base64 data URL for preview
+func (a *App) GetWallpaperAsBase64(filepath string) (string, error) {
+	// Check if file exists
+	if _, err := os.Stat(filepath); os.IsNotExist(err) {
+		return "", fmt.Errorf("file does not exist: %s", filepath)
+	}
+
+	// Read the file
+	data, err := os.ReadFile(filepath)
+	if err != nil {
+		return "", fmt.Errorf("failed to read file: %v", err)
+	}
+
+	// Encode to base64 with proper data URI prefix
+	encoded := base64.StdEncoding.EncodeToString(data)
+	dataURI := "data:image/jpeg;base64," + encoded
+
+	return dataURI, nil
+}
+
 // GetSettings returns the current application settings
 func (a *App) GetSettings() AppSettings {
 	return a.settings
@@ -91,11 +112,13 @@ func (a *App) DownloadAndSetWallpaper() (*WallpaperInfo, error) {
 	for _, url := range a.settings.DownloadSources {
 		info, err := a.downloadFile(url)
 		if err != nil {
+			fmt.Printf("Failed to download from %s: %v\n", url, err)
 			continue
 		}
 
 		err = a.SetWallpaper(info.Filepath)
 		if err != nil {
+			fmt.Printf("Failed to set wallpaper %s: %v\n", info.Filepath, err)
 			continue
 		}
 
@@ -113,7 +136,14 @@ func (a *App) SetWallpaper(filepath string) error {
 	switch runtime.GOOS {
 	case "windows":
 		// Use PowerShell for better Windows wallpaper setting
-		psScript := fmt.Sprintf(`Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public class Wallpaper { [DllImport("user32.dll", CharSet=CharSet.Auto)] public static extern int SystemParametersInfo(int uAction, int uParam, string lpvParam, int fuWinIni); } '; [Wallpaper]::SystemParametersInfo(20, 0, '%s', 3)`, filepath)
+		psScript := fmt.Sprintf(`
+			Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; 
+			public class Wallpaper { 
+				[DllImport("user32.dll", CharSet=CharSet.Auto)] 
+				public static extern int SystemParametersInfo(int uAction, int uParam, string lpvParam, int fuWinIni); 
+			}'; 
+			[Wallpaper]::SystemParametersInfo(20, 0, '%s', 3)
+		`, filepath)
 		cmd = exec.Command("powershell", "-Command", psScript)
 	case "darwin":
 		cmd = exec.Command("osascript", "-e", fmt.Sprintf(`tell application "Finder" to set desktop picture to POSIX file "%s"`, filepath))
@@ -241,7 +271,7 @@ func (a *App) downloadFile(url string) (*WallpaperInfo, error) {
 		ID:           id,
 		Filename:     filename,
 		Filepath:     filepath,
-		LocalURL:     "file://" + filepath,
+		LocalURL:     "", // Will be set in GetWallpapers
 		DownloadDate: time.Now(),
 		SourceURL:    url,
 		FileSize:     size,

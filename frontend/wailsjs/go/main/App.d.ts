@@ -8,6 +8,8 @@ export function DownloadAndSetWallpaper():Promise<main.WallpaperInfo>;
 
 export function GetSettings():Promise<main.AppSettings>;
 
+export function GetWallpaperAsBase64(arg1:string):Promise<string>;
+
 export function GetWallpaperDirectory():Promise<string>;
 
 export function GetWallpapers():Promise<Array<main.WallpaperInfo>>;

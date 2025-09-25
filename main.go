@@ -17,7 +17,7 @@ func main() {
 
 	// Create application with options
 	err := wails.Run(&options.App{
-		Title:  "Wallset-gosv",
+		Title:  "Wallset",
 		Width:  450,
 		Height: 400,
 		AssetServer: &assetserver.Options{

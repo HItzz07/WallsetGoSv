@@ -14,6 +14,10 @@ export function GetSettings() {
   return window['go']['main']['App']['GetSettings']();
 }
 
+export function GetWallpaperAsBase64(arg1) {
+  return window['go']['main']['App']['GetWallpaperAsBase64'](arg1);
+}
+
 export function GetWallpaperDirectory() {
   return window['go']['main']['App']['GetWallpaperDirectory']();
 }
