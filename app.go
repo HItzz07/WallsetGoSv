@@ -15,7 +15,9 @@ import (
 	"sort"
 	"syscall"
 	"time"
+	"unsafe"
 
+	"github.com/getlantern/systray"
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
@@ -64,6 +66,7 @@ func (a *App) startup(ctx context.Context) {
 
 	// Start the background wallpaper changer
 	go a.startAutoChanger()
+	a.setupSystemTray()
 }
 
 // --- Exposed Go Methods for Svelte ---
@@ -131,28 +134,14 @@ func (a *App) DownloadAndSetWallpaper() (*WallpaperInfo, error) {
 }
 
 // SetWallpaper sets the desktop background from a given file path
+// SetWallpaper sets the desktop background from a given file path
 func (a *App) SetWallpaper(filepath string) error {
-	var cmd *exec.Cmd
-
 	switch runtime.GOOS {
 	case "windows":
-		// Use PowerShell with hidden window
-		psScript := fmt.Sprintf(`
-			Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; 
-			public class Wallpaper { 
-				[DllImport("user32.dll", CharSet=CharSet.Auto)] 
-				public static extern int SystemParametersInfo(int uAction, int uParam, string lpvParam, int fuWinIni); 
-			}'; 
-			[Wallpaper]::SystemParametersInfo(20, 0, '%s', 3)
-		`, filepath)
-		cmd = exec.Command("powershell", "-WindowStyle", "Hidden", "-Command", psScript)
-		// Hide the console window
-		cmd.SysProcAttr = &syscall.SysProcAttr{
-			HideWindow: true,
-		}
-		cmd = exec.Command("powershell", "-Command", psScript)
+		return setWallpaperWindows(filepath)
 	case "darwin":
-		cmd = exec.Command("osascript", "-e", fmt.Sprintf(`tell application "Finder" to set desktop picture to POSIX file "%s"`, filepath))
+		cmd := exec.Command("osascript", "-e", fmt.Sprintf(`tell application "Finder" to set desktop picture to POSIX file "%s"`, filepath))
+		return cmd.Run()
 	case "linux":
 		// Try multiple Linux desktop environments
 		commands := [][]string{
@@ -162,7 +151,7 @@ func (a *App) SetWallpaper(filepath string) error {
 		}
 
 		for _, cmdArgs := range commands {
-			cmd = exec.Command(cmdArgs[0], cmdArgs[1:]...)
+			cmd := exec.Command(cmdArgs[0], cmdArgs[1:]...)
 			if cmd.Run() == nil {
 				return nil
 			}
@@ -170,7 +159,37 @@ func (a *App) SetWallpaper(filepath string) error {
 		return fmt.Errorf("no suitable wallpaper command found")
 	}
 
-	return cmd.Run()
+	return fmt.Errorf("unsupported operating system")
+}
+
+// setWallpaperWindows uses direct Windows API call - no external processes
+func setWallpaperWindows(imagePath string) error {
+	// Load user32.dll and get SystemParametersInfoW function
+	user32 := syscall.NewLazyDLL("user32.dll")
+	systemParametersInfo := user32.NewProc("SystemParametersInfoW")
+
+	// Convert Go string to Windows UTF-16 string pointer
+	imagePathPtr, err := syscall.UTF16PtrFromString(imagePath)
+	if err != nil {
+		return fmt.Errorf("failed to convert path to UTF-16: %v", err)
+	}
+
+	// Call SystemParametersInfoW
+	// SPI_SETDESKWALLPAPER = 20
+	// SPIF_UPDATEINIFILE | SPIF_SENDCHANGE = 3
+	ret, _, lastErr := systemParametersInfo.Call(
+		uintptr(20),                           // SPI_SETDESKWALLPAPER
+		uintptr(0),                            // uiParam (not used)
+		uintptr(unsafe.Pointer(imagePathPtr)), // pvParam (image path)
+		uintptr(3),                            // fWinIni (update registry and broadcast change)
+	)
+
+	// Check if the call was successful
+	if ret == 0 {
+		return fmt.Errorf("SystemParametersInfoW failed: %v", lastErr)
+	}
+
+	return nil
 }
 
 // DeleteWallpaper removes a wallpaper file and its metadata
@@ -416,4 +435,41 @@ func (a *App) ShowWindow() {
 // QuitApp quits the application completely
 func (a *App) QuitApp() {
 	wailsruntime.Quit(a.ctx)
+}
+
+// setupSystemTray sets up the system tray icon and menu
+func (a *App) setupSystemTray() {
+	go func() {
+		systray.Run(a.onReady, a.onExit)
+	}()
+}
+
+func (a *App) onReady() {
+	systray.SetTitle("Wallset")
+	systray.SetTooltip("Wallset - Wallpaper Engine")
+
+	// Menu items
+	mShow := systray.AddMenuItem("Show Wallset", "Show the main window")
+	mDownload := systray.AddMenuItem("Download New", "Download and set new wallpaper")
+	systray.AddSeparator()
+	mQuit := systray.AddMenuItem("Quit", "Quit Wallset")
+
+	// Handle menu clicks
+	go func() {
+		for {
+			select {
+			case <-mShow.ClickedCh:
+				a.ShowWindow()
+			case <-mDownload.ClickedCh:
+				go a.DownloadAndSetWallpaper()
+			case <-mQuit.ClickedCh:
+				systray.Quit()
+				a.QuitApp()
+			}
+		}
+	}()
+}
+
+func (a *App) onExit() {
+	// Cleanup when systray exits
 }
