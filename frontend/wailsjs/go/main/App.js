@@ -30,8 +30,16 @@ export function OpenWallpaperDirectory() {
   return window['go']['main']['App']['OpenWallpaperDirectory']();
 }
 
+export function QuitApp() {
+  return window['go']['main']['App']['QuitApp']();
+}
+
 export function SetWallpaper(arg1) {
   return window['go']['main']['App']['SetWallpaper'](arg1);
+}
+
+export function ShowWindow() {
+  return window['go']['main']['App']['ShowWindow']();
 }
 
 export function UpdateSettings(arg1) {

@@ -25,9 +25,13 @@ func main() {
 		},
 		BackgroundColour: &options.RGBA{R: 27, G: 38, B: 54, A: 1},
 		OnStartup:        app.startup,
+		OnBeforeClose:    app.beforeClose, // ← ADD THIS
 		Bind: []interface{}{
 			app,
 		},
+		// Window options for system tray behavior
+		WindowStartState: options.Normal,
+		DisableResize:    true,
 	})
 
 	if err != nil {

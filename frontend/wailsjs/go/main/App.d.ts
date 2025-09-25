@@ -16,6 +16,10 @@ export function GetWallpapers():Promise<Array<main.WallpaperInfo>>;
 
 export function OpenWallpaperDirectory():Promise<void>;
 
+export function QuitApp():Promise<void>;
+
 export function SetWallpaper(arg1:string):Promise<void>;
+
+export function ShowWindow():Promise<void>;
 
 export function UpdateSettings(arg1:main.AppSettings):Promise<void>;

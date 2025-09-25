@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+	"syscall"
 	"time"
 
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
@@ -135,7 +136,7 @@ func (a *App) SetWallpaper(filepath string) error {
 
 	switch runtime.GOOS {
 	case "windows":
-		// Use PowerShell for better Windows wallpaper setting
+		// Use PowerShell with hidden window
 		psScript := fmt.Sprintf(`
 			Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; 
 			public class Wallpaper { 
@@ -144,6 +145,11 @@ func (a *App) SetWallpaper(filepath string) error {
 			}'; 
 			[Wallpaper]::SystemParametersInfo(20, 0, '%s', 3)
 		`, filepath)
+		cmd = exec.Command("powershell", "-WindowStyle", "Hidden", "-Command", psScript)
+		// Hide the console window
+		cmd.SysProcAttr = &syscall.SysProcAttr{
+			HideWindow: true,
+		}
 		cmd = exec.Command("powershell", "-Command", psScript)
 	case "darwin":
 		cmd = exec.Command("osascript", "-e", fmt.Sprintf(`tell application "Finder" to set desktop picture to POSIX file "%s"`, filepath))
@@ -393,4 +399,21 @@ func (a *App) startAutoChanger() {
 			}
 		}
 	}()
+}
+
+// beforeClose is called when the user tries to close the window
+func (a *App) beforeClose(ctx context.Context) (prevent bool) {
+	// Hide to system tray instead of closing
+	wailsruntime.Hide(ctx)
+	return true // Prevent actual closing
+}
+
+// ShowWindow shows the main window (can be called from tray menu)
+func (a *App) ShowWindow() {
+	wailsruntime.Show(a.ctx)
+}
+
+// QuitApp quits the application completely
+func (a *App) QuitApp() {
+	wailsruntime.Quit(a.ctx)
 }
